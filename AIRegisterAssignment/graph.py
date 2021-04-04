@@ -57,77 +57,8 @@ def t_list_contains(q, s):
     return False
 
 
-def check_solvable(state):
-    # put puzzle into row-major order
-    row_maj = state.reshape((1, 9))
-    inv_count = 0
-    # count number of inversions
-    for i in range(0, 8):
-        for j in range(i + 1, 9):
-            if row_maj[0, j] < row_maj[0, i]:
-                inv_count += 1
-    # return True if even
-    return inv_count % 2 == 0
-
-
-def generate_random_8puzzle():
-    # generate 8-puzzles until a solvable puzzle is created, return the solvable puzzle
-    while 1:
-        r = default_rng()
-        # select random numbers 0-9 without reselecting numbers, create an array and reshape to 3x3 matrix
-        state = np.array(r.choice(9, size=9, replace=False).reshape((3, 3)), np.int32)
-        if check_solvable(state):
-            return state
-
-
-def display_8puzzle(state):
-    for i in range(0, 3):
-        for j in range(0, 3):
-            n = state[i, j]
-            if n == 0:
-                n = '*'
-            print(n, end="  ")
-        print()
-    print(" ")
-
-
-def swap_tiles(state, t0, t1):
-    # RETURNS a swapped state, will not alter the original
-    new_state = np.array(state)
-    new_state[t0] = state[t1]
-    new_state[t1] = state[t0]
-    return new_state
-
-
-def misplaced_tile(state, g_state):
-    misplaced_count = 0
-    for i in range(0, 3):
-        for j in range(0, 3):
-            if state[i, j] != g_state[i, j]:
-                misplaced_count += 1
-    return misplaced_count
-
-
-def manhattan_distance(state, g_state):
-    def man_single_tile_cost(s, g_s, si, sj):
-        for i1 in range(0, 3):
-            for j1 in range(0, 3):
-                if s[si, sj] == g_s[i1, j1]:
-                    return abs(i1 - i) + abs(j1 - j)
-
-    manhattan = 0
-    for i in range(0, 3):
-        for j in range(0, 3):
-            manhattan += man_single_tile_cost(state, g_state, i, j)
-    return manhattan
-
-
-def max_mis_man(state, g_state):
-    return max(misplaced_tile(state, g_state), manhattan_distance(state, g_state))
-
-
 class Graph:
-    def __init__(self, mode=0, start_state=None):
+    def __init__(self, start_state=None, n_registers=5, avg_reg_throughput=1, queue_limit=5):
         self.vertexes = {}
         self.edges = {}
         self.n_vertexes = 0
@@ -136,14 +67,15 @@ class Graph:
         self.traversal = collections.deque()
         self.nodes = 0
         self.state_library = {}  # maps states to their vertex
+        self.n_reg = n_registers
+        self.reg_output = avg_reg_throughput  # average register throughput per minute
+        self.q_limit = queue_limit
+        self.wait_flag = False
         if start_state is None:
-            self.start_state = generate_random_8puzzle()
+            self.start_state = np.zeros((1, n_registers), np.int32)
         else:
             self.start_state = start_state
-        self.build_mode = mode
-        self.goal_state = np.array([[1, 2, 3],
-                                    [4, 5, 6],
-                                    [7, 8, 0]], np.int32)
+        self.goal_state = np.zeros((1, n_registers), np.int32)
         self.states = [self.start_state]
 
     def __iter__(self):
@@ -193,16 +125,30 @@ class Graph:
         for u in self.vertexes:
             self.vertexes[u].lose()
 
+    # NEEDS TO BE UPDATED!
+    # Cost here is traversal cost, NOT node cost which is based on heuristic
     def getCost(self, move):
-        if self.build_mode == 0:
-            return misplaced_tile(move, self.goal_state)
-        elif self.build_mode == 1:
-            return manhattan_distance(move, self.goal_state)
-        elif self.build_mode == 2:
-            return max_mis_man(move, self.goal_state)
+        # cost is representative of risk calculated using a number of metrics
+        # first, the risk associated with isle length is n^(n-1) where n in the number of people in the isle
+        # isle risk has an additional risk added based on the risk from adjacent isles which is calculated using the
+        # inverse square law where the risk of adjacent isles is divided by the square of it's distance+1
+        # the total cost/risk of a node is the summation of these two risks
+        risk = np.zeros((1, self.n_reg), np.int32)
+        ext_risk = np.zeros((1, self.n_reg), np.int32)
+        total_risk = 0
+        for i in range(0, self.n_reg):
+            risk[i] = move[i] ** move[i] - 1
+            e_risk = 0
+            for j in range(0, self.n_reg):
+                if j != i:
+                    e_risk += risk[j]/(j-i+1)**2
+            ext_risk[i] = e_risk
+            total_risk += risk[i] + ext_risk[i]
+        return total_risk
 
-    def process_new_state(self, t0, t1, state, ancestor):
-        new_state = swap_tiles(state, t0, t1)
+    def process_new_state(self, i, state, ancestor):
+        new_state = state
+        new_state[i] += 1
         immutable_new_state = new_state.tobytes()
         if not self.state_library.__contains__(immutable_new_state):
             leaf = Vertex(str(self.nodes), new_state)
@@ -213,24 +159,13 @@ class Graph:
 
     def generate_play_graph(self, v):
         # iterate through the matrix to find all valid moves
-        # v = self.get_vertex(v)
-        for i in range(0, 3):
-            for j in range(0, 3):
-                if v.state[i, j] == 0:
-                    for n in range(-1, 2):
-                        si = i + n
-                        if 0 <= si <= 2:
-                            for m in range(-1, 2):
-                                sj = j + m
-                                if 0 <= sj <= 2:
-                                    if n == 0:
-                                        if m != 0:
-                                            # create new state for valid move and process it
-                                            self.process_new_state((i, j), (si, sj), v.state, v)
-                                    if m == 0:
-                                        if n != 0:
-                                            # create new state for valid move and process it
-                                            self.process_new_state((i, j), (si, sj), v.state, v)
+        # if no moves result in queue length under the limit, then wait_flag is set
+        wait_flag = True
+        for i in range(0, self.n_reg):
+            if v.state[i] < self.q_limit:
+                self.process_new_state(i, v.state, v)
+                wait_flag = False
+        self.wait_flag = wait_flag
 
     def a_star(self, a, z):
         opened = {a}
@@ -266,7 +201,7 @@ class Graph:
             self.generate_play_graph(node)
 
             # expand leaves
-            for leaf in node.leaves:
+            for leaf in node.leaves: # NEED TO MAKE SURE TO ADD HEURISTICS HERE
                 # if leaf is not present in opened or closed, add it to opened and add it's costs, add it's ancestor
                 # Note that get_edge_time returns the cost calculated by Manhattan distance or misplaced tile
                 # that is stored in the self.edges list which represents h(n) in this version of A*
