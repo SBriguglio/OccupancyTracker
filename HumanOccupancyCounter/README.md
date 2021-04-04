@@ -1,24 +1,24 @@
-#Human Occupancy Counter
+# Human Occupancy Counter
 
-##Purpose
+## Purpose
 This program was created to count the occupancy of an establishment by monitoring
 the entrance and exit where the count begins.
 
-##Description
+## Description
 The program will execute by opening a video feed. The program can track unique
 bodies across the frame. Once the object(person) crosses the designated threshold
 they either increment the counter or decrement the count depending on the direction
 of crossing.
 
-##Libraries
-*imutils / imutils.video
-*numpy
-*argparse
-*time
-*cv2 (opencv-python)
-*dlib
+## Libraries
+* imutils / imutils.video
+* numpy
+* argparse
+* time
+* cv2 (opencv-python)
+* dlib
 
-##Execution
+## Execution
 Once all required libraries have been installed, execute this script "occupancyDetection.py"
 from the terminal/command prompt using python3. You may also optionally pass in
 a few arguments:
