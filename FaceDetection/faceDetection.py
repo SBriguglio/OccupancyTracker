@@ -17,7 +17,7 @@ def main():
     ct = CentroidTracker()
     #initialize the frame size
     (H, W) = (None, None)
-
+    
     #Load model
     net = cv2.dnn.readNetFromCaffe("deploy.prototext", "res10_300x300_ssd_iter_140000.caffemodel")
 
@@ -34,7 +34,7 @@ def main():
         #read the next frame from video stream
         frame = vs.read()
         #resize the frame
-        frame = imutils.resize(frame, width=800)
+        frame = imutils.resize(frame, width=400)
         #if the frame dimensions don't exist, grab them
         if W is None or H is None:
             (H, W) = frame.shape[:2]
