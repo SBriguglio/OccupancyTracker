@@ -4,3 +4,7 @@
 # Datasource local storage ignored files
 /../../../../../../:\Repos\GitHub\COMP3170\OccupancyTracker\.idea/dataSources/
 /dataSources.local.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Zeppelin ignored files
+/ZeppelinRemoteNotebooks/
