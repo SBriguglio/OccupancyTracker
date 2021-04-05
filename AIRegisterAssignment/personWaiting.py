@@ -8,6 +8,7 @@ import imutils
 import time
 import dlib
 import cv2
+import graph
 
 def main():
     #This will parse the arguements for execution
