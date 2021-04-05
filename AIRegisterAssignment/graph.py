@@ -1,7 +1,8 @@
 import collections
 import math
 import numpy as np
-from numpy.random._generator import default_rng
+from random import seed
+from random import choice
 
 
 class Vertex:
@@ -72,10 +73,10 @@ class Graph:
         self.q_limit = queue_limit
         self.wait_flag = False
         if start_state is None:
-            self.start_state = np.zeros((1, n_registers), np.int32)
+            self.start_state = np.zeros((n_registers,), np.int32)
         else:
             self.start_state = start_state
-        self.goal_state = np.zeros((1, n_registers), np.int32)
+        self.goal_state = np.zeros((n_registers,), np.int32)
         self.states = [self.start_state]
 
     def __iter__(self):
@@ -133,18 +134,30 @@ class Graph:
         # isle risk has an additional risk added based on the risk from adjacent isles which is calculated using the
         # inverse square law where the risk of adjacent isles is divided by the square of it's distance+1
         # the total cost/risk of a node is the summation of these two risks
-        risk = np.zeros((1, self.n_reg), np.int32)
-        ext_risk = np.zeros((1, self.n_reg), np.int32)
+        risk = np.zeros((self.n_reg,), np.int32)
+        ext_risk = np.zeros((self.n_reg,), np.int32)
         total_risk = 0
         for i in range(0, self.n_reg):
-            risk[i] = move[i] ** move[i] - 1
-            e_risk = 0
-            for j in range(0, self.n_reg):
-                if j != i:
-                    e_risk += risk[j]/(j-i+1)**2
-            ext_risk[i] = e_risk
-            total_risk += risk[i] + ext_risk[i]
+            if move[i] > 0:
+                risk[i] = move[i] ** (move[i] - 1)
+                e_risk = 0
+                for j in range(0, self.n_reg):
+                    if j != i and risk[j] != 0:
+                        distance = (j-i)
+                        e_risk += risk[j] / distance**2
+                ext_risk[i] = e_risk
+                total_risk += risk[i] + ext_risk[i]
         return total_risk
+
+    def random_throughput(self, state):  # randomly removes customers from n registers where n is the avg throughput
+        roles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        for i in range(self.n_reg):
+            seed(1)
+            role = choice(roles)
+            if state[i] != 0:
+                if role > self.reg_output:
+                    state[i] -= 1
+        return state
 
     def process_new_state(self, i, state, ancestor):
         new_state = state
@@ -157,15 +170,18 @@ class Graph:
             cost = self.getCost(leaf.state)
             self.connect(ancestor, leaf, cost)
 
-    def generate_play_graph(self, v):
-        # iterate through the matrix to find all valid moves
+    def generate_checkout_graph(self, v):
+        # iterate through the checkout array to find valid places to add a customer to the queue
         # if no moves result in queue length under the limit, then wait_flag is set
+        # randomly processes output of checkout
         wait_flag = True
+        v.state = self.random_throughput(v.state)
         for i in range(0, self.n_reg):
             if v.state[i] < self.q_limit:
                 self.process_new_state(i, v.state, v)
                 wait_flag = False
         self.wait_flag = wait_flag
+        return wait_flag
 
     def a_star(self, a, z):
         opened = {a}
@@ -198,10 +214,10 @@ class Graph:
                     node = ancestors[node]
 
             # create leaves
-            self.generate_play_graph(node)
+            self.generate_checkout_graph(node)
 
             # expand leaves
-            for leaf in node.leaves: # NEED TO MAKE SURE TO ADD HEURISTICS HERE
+            for leaf in node.leaves:  # NEED TO MAKE SURE TO ADD HEURISTICS HERE
                 # if leaf is not present in opened or closed, add it to opened and add it's costs, add it's ancestor
                 # Note that get_edge_time returns the cost calculated by Manhattan distance or misplaced tile
                 # that is stored in the self.edges list which represents h(n) in this version of A*
