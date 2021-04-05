@@ -11,7 +11,7 @@ if __name__ == '__main__':
         print("Rekt")
     print("Solution")
     i = 0
-    for n in t.traversal:
+    for n in t.exact:
         i += 1
         print("Step {}:".format(i))
         print(n.state)

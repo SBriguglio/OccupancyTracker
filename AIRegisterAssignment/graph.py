@@ -1,4 +1,5 @@
 import collections
+from _datetime import datetime
 import math
 import numpy as np
 from random import seed
@@ -152,7 +153,7 @@ class Graph:
     def random_throughput(self, state):  # randomly removes customers from n registers where n is the avg throughput
         roles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         for i in range(self.n_reg):
-            seed(1)
+            seed(datetime.now())
             role = choice(roles)
             if state[i] != 0:
                 if role > self.reg_output:
@@ -160,8 +161,8 @@ class Graph:
         return state
 
     def process_new_state(self, i, state, ancestor):
-        new_state = state
-        new_state[i] += 1
+        new_state = np.array(state)
+        new_state[i] = new_state[i] + 1
         immutable_new_state = new_state.tobytes()
         if not self.state_library.__contains__(immutable_new_state):
             leaf = Vertex(str(self.nodes), new_state)
@@ -175,10 +176,10 @@ class Graph:
         # if no moves result in queue length under the limit, then wait_flag is set
         # randomly processes output of checkout
         wait_flag = True
-        v.state = self.random_throughput(v.state)
+        new_state = self.random_throughput(np.array(v.state))
         for i in range(0, self.n_reg):
-            if v.state[i] < self.q_limit:
-                self.process_new_state(i, v.state, v)
+            if new_state[i] < self.q_limit:
+                self.process_new_state(i, new_state, v)
                 wait_flag = False
         self.wait_flag = wait_flag
         return wait_flag
