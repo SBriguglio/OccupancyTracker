@@ -7,13 +7,15 @@ from random import choice
 
 
 class Vertex:
-    def __init__(self, node, state=None):
+    def __init__(self, node, state=None, depth=0):
         self.name = node
         self.discovered = False
         self.leaves = {}
         self.ancestor = []
         self.heuristic = 0
         self.state = state
+        self.depth = depth
+        self.add_to = None
 
     def __str__(self):
         return self.name + ' leaves: ' + str([x.name for x in self.leaves])
@@ -60,7 +62,7 @@ def t_list_contains(q, s):
 
 
 class Graph:
-    def __init__(self, start_state=None, n_registers=5, avg_reg_throughput=1, queue_limit=5):
+    def __init__(self, start_state=None, n_registers=5, avg_reg_throughput=9, queue_limit=5):
         self.vertexes = {}
         self.edges = {}
         self.n_vertexes = 0
@@ -83,12 +85,12 @@ class Graph:
     def __iter__(self):
         return iter(self.vertexes.values())
 
-    def add_vertex(self, node, heuristic=None, state=None):
+    def add_vertex(self, node, heuristic=None, state=None, depth=0):
         self.n_vertexes = self.n_vertexes + 1
         if state is not None:
-            vert = Vertex(node, state)
+            vert = Vertex(node, state, depth=depth)
         elif state is None:
-            vert = Vertex(node)
+            vert = Vertex(node, depth=depth)
         self.vertexes[node] = vert
         vert.heuristic = heuristic
         return vert
@@ -165,7 +167,8 @@ class Graph:
         new_state[i] = new_state[i] + 1
         immutable_new_state = new_state.tobytes()
         if not self.state_library.__contains__(immutable_new_state):
-            leaf = Vertex(str(self.nodes), new_state)
+            leaf = Vertex(str(self.nodes), new_state, depth=ancestor.depth+1)
+            leaf.add_to = i
             self.state_library[immutable_new_state] = leaf
             self.nodes += 1
             cost = self.getCost(leaf.state)
@@ -184,11 +187,12 @@ class Graph:
         self.wait_flag = wait_flag
         return wait_flag
 
-    def a_star(self, a, z):
+    def a_star(self, a, max_depth=10):
         opened = {a}
         closed = {}
         costs = {a: 0}
         ancestors = {}
+        depth_n = []
         while opened:
             minimum = math.inf
             # select minimum cost state
@@ -214,36 +218,52 @@ class Graph:
                         return #costs[]
                     node = ancestors[node]
 
-            # create leaves
-            self.generate_checkout_graph(node)
-
+            # create leaves until max_depth
+            d = node.depth
+            if d == max_depth:
+                depth_n.append(node)
             # expand leaves
-            for leaf in node.leaves:  # NEED TO MAKE SURE TO ADD HEURISTICS HERE
-                # if leaf is not present in opened or closed, add it to opened and add it's costs, add it's ancestor
-                # Note that get_edge_time returns the cost calculated by Manhattan distance or misplaced tile
-                # that is stored in the self.edges list which represents h(n) in this version of A*
-                if not (opened.__contains__(self.get_vertex(leaf.get_name())) or closed.__contains__(
-                        self.get_vertex(leaf.get_name()))):
-                    opened.add(self.get_vertex(leaf.get_name()))
-                    # f(n) = g(n) + h(n)
-                    costs[self.get_vertex(leaf.get_name())] = costs[node] + self.get_edge_time(node, leaf)
-                    ancestors[leaf] = node
-
-                # if leaf IS present in opened, update its cost and ancestor if the cost is cheaper
-                elif opened.__contains__(self.get_vertex(leaf.get_name()).state.tobytes()):
-                    # F(n) > f(n) --> F(n) = g(n) + h(n)
-                    if costs[self.get_vertex(leaf.get_name())] > costs[node] + self.get_edge_time(node, leaf):
-                        # f(n) = (g(n)) + h(n)
-                        costs[self.get_vertex(leaf.get_name())] = costs[node] + self.get_edge_time(node, leaf)
-                        ancestors[leaf] = node
-
-                # if leaf IS present in closed and its cost is cheaper, move it back to opened and update its cost
-                # and ancestor
-                elif closed.__contains__(self.get_vertex(leaf.get_name())):
-                    if costs[self.get_vertex(leaf.get_name())] > costs[node] + self.get_edge_time(node, leaf):
+            if d < max_depth:
+                self.generate_checkout_graph(node)
+                for leaf in node.leaves:  # NEED TO MAKE SURE TO ADD HEURISTICS HERE
+                    # if leaf is not present in opened or closed, add it to opened and add it's costs, add it's ancestor
+                    # Note that get_edge_time returns the cost calculated by Manhattan distance or misplaced tile
+                    # that is stored in the self.edges list which represents h(n) in this version of A*
+                    if not (opened.__contains__(self.get_vertex(leaf.get_name())) or closed.__contains__(
+                            self.get_vertex(leaf.get_name()))):
                         opened.add(self.get_vertex(leaf.get_name()))
-                        closed.pop(self.get_vertex(leaf.get_name()))
+                        # f(n) = g(n) + h(n)
                         costs[self.get_vertex(leaf.get_name())] = costs[node] + self.get_edge_time(node, leaf)
                         ancestors[leaf] = node
-            closed[node] = 0
+
+                    # if leaf IS present in opened, update its cost and ancestor if the cost is cheaper
+                    elif opened.__contains__(self.get_vertex(leaf.get_name()).state.tobytes()):
+                        # F(n) > f(n) --> F(n) = g(n) + h(n)
+                        if costs[self.get_vertex(leaf.get_name())] > costs[node] + self.get_edge_time(node, leaf):
+                            # f(n) = (g(n)) + h(n)
+                            costs[self.get_vertex(leaf.get_name())] = costs[node] + self.get_edge_time(node, leaf)
+                            ancestors[leaf] = node
+
+                    # if leaf IS present in closed and its cost is cheaper, move it back to opened and update its cost
+                    # and ancestor
+                    elif closed.__contains__(self.get_vertex(leaf.get_name())):
+                        if costs[self.get_vertex(leaf.get_name())] > costs[node] + self.get_edge_time(node, leaf):
+                            opened.add(self.get_vertex(leaf.get_name()))
+                            closed.pop(self.get_vertex(leaf.get_name()))
+                            costs[self.get_vertex(leaf.get_name())] = costs[node] + self.get_edge_time(node, leaf)
+                            ancestors[leaf] = node
+                closed[node] = 0
+        min_cost = math.inf
+        min_node = None
+        for i in depth_n:
+            if costs[i] < min_cost:
+                min_cost = costs[i]
+                min_node = i
+        node = min_node
+        while True:
+            self.exact.appendleft(node)
+            anc = ancestors[node]
+            if (anc.state == self.start_state).all():
+                return node
+            node = anc
         return -1
